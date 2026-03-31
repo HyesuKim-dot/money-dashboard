@@ -201,6 +201,7 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
 .cc-통신{background:#EEF0F8;color:#2A2A6E;}
 .cc-선물{background:#F8E8F4;color:#6E1A5A;}
 .cc-기타{background:#F0F0F0;color:#505050;}
+.cc-특별지출{background:var(--gold-light);color:var(--gold);}
 
 /* NET WORTH CHART */
 .chart-wrap{position:relative;height:160px;margin-top:8px;}
@@ -369,6 +370,18 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
         <div class="stat-sub" id="stat-salary-remain-sub"></div>
       </div>
     </div>
+  </div>
+
+  <!-- Special Expenses Card -->
+  <div id="special-exp-card" style="display:none;" class="card" style="border-left:3px solid var(--gold);">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div class="card-title" style="margin:0;color:var(--gold);">⚡ 특별지출</div>
+        <span style="font-size:11px;color:var(--text-hint);">생활비 합산 제외</span>
+      </div>
+      <span style="font-family:var(--mono);font-size:16px;font-weight:500;color:var(--gold);" id="special-exp-total">₩ 0</span>
+    </div>
+    <div id="special-exp-list"></div>
   </div>
 
   <!-- Insights -->
@@ -652,7 +665,10 @@ function saveToFirestore() {
 const BUDGET = 1200000;
 const SALARY_DAY = 25;
 const CATEGORIES = ['식비','교통','구독','쇼핑','의료건강','외식','커피간식','문화생활','미용','엔터','교육','주거','통신','선물','기타'];
+const SPECIAL_CAT = '특별지출';
 const CAT_COLORS = ['#C44','#2C5F8A','#6A3A9A','#B86A1A','#2A7A5A','#C43434','#B87A1A','#1A4AAA','#AA1A7A','#4A7A1A','#1A7A9A','#7A6A1A','#2A2A9A','#9A1A7A','#666'];
+const ALL_CATEGORIES = [...CATEGORIES, SPECIAL_CAT];
+const ALL_CAT_COLORS = [...CAT_COLORS, '#B8860B'];
 
 // ── STATE ──
 let state = {
@@ -1011,7 +1027,7 @@ function initExpenseForm() {
   document.getElementById('inp-date').value = now.toISOString().split('T')[0];
   const grid = document.getElementById('cat-grid');
   grid.innerHTML = '';
-  CATEGORIES.forEach(c => {
+  ALL_CATEGORIES.forEach(c => {
     const btn = document.createElement('button');
     btn.className = 'cat-btn';
     btn.textContent = c;
@@ -1056,7 +1072,10 @@ function renderExpense() {
     const dt = new Date(y, m-1, d);
     return dt>=start&&dt<end;
   });
-  const total = cycleExp.reduce((s,e)=>s+e.amount,0);
+  const specialExp = cycleExp.filter(e => e.cat === SPECIAL_CAT);
+  const normalExp  = cycleExp.filter(e => e.cat !== SPECIAL_CAT);
+  const total = normalExp.reduce((s,e)=>s+e.amount,0);
+  const specialTotal = specialExp.reduce((s,e)=>s+e.amount,0);
   const pct = Math.min((total/BUDGET)*100,100);
   const remain = BUDGET - total;
 
@@ -1099,6 +1118,27 @@ function renderExpense() {
   const projEl = document.getElementById('stat-proj');
   projEl.textContent = isPrev ? '(확정)' : fmtKRWFull(projected);
 
+  // 특별지출 카드 렌더링
+  const specialCard = document.getElementById('special-exp-card');
+  if (specialExp.length > 0) {
+    specialCard.style.display = 'block';
+    document.getElementById('special-exp-total').textContent = fmtKRWFull(specialTotal);
+    document.getElementById('special-exp-list').innerHTML = specialExp.map(e => {
+      const d = new Date(e.date.split('-')[0], e.date.split('-')[1]-1, e.date.split('-')[2]);
+      return `<div class="expense-item">
+        <div class="expense-date"><span class="day">${d.getDate()}</span>${d.getMonth()+1}월</div>
+        <div>
+          <div class="expense-memo">${e.memo||'(메모 없음)'}</div>
+          <span class="expense-cat" style="background:var(--gold-light);color:var(--gold);display:inline-block;font-size:10px;padding:2px 8px;border-radius:99px;margin-top:2px;font-weight:500;">특별지출</span>
+        </div>
+        <div class="expense-amount" style="color:var(--gold);">${fmtKRWFull(e.amount)}</div>
+        <button class="btn-danger-sm" onclick="deleteExpense(${e.id})">✕</button>
+      </div>`;
+    }).join('');
+  } else {
+    specialCard.style.display = 'none';
+  }
+
   // 월급 대비 지출 비율
   const cycleSalary = getCycleSalary(start);
   const salaryPctEl = document.getElementById('stat-salary-pct');
@@ -1121,7 +1161,7 @@ function renderExpense() {
 
   // Top cat
   const catTotals = {};
-  cycleExp.forEach(e=>{ catTotals[e.cat]=(catTotals[e.cat]||0)+e.amount; });
+  normalExp.forEach(e=>{ catTotals[e.cat]=(catTotals[e.cat]||0)+e.amount; });
   const topCat = Object.entries(catTotals).sort((a,b)=>b[1]-a[1])[0];
   document.getElementById('stat-top-cat').textContent = topCat ? `${topCat[0]} (${fmtKRW(topCat[1])})` : '—';
 
@@ -1161,7 +1201,7 @@ function renderExpense() {
   const catHtml = sorted.length===0
     ? '<div class="empty">지출 내역이 없어요.</div>'
     : sorted.map(([cat,amt])=>{
-        const color = hexFull(CAT_COLORS[CATEGORIES.indexOf(cat)]||'#888888');
+        const color = hexFull(ALL_CAT_COLORS[ALL_CATEGORIES.indexOf(cat)]||'#888888');
         const p = Math.max(2, Math.round((amt/maxAmt)*100));
         return `<div class="cat-sum-row">
           <div class="cat-sum-name">${cat}</div>
@@ -1177,12 +1217,12 @@ function renderExpense() {
   }
 
   // Filter — scoped to current view's expenses only
-  const viewCats = [...new Set(cycleExp.map(e=>e.cat))];
+  const viewCats = [...new Set(normalExp.map(e=>e.cat))];
   const fr = document.getElementById('filter-row');
   fr.innerHTML = `<button class="filter-btn ${filterCat==='전체'?'active':''}" onclick="setFilter('전체',this)">전체</button>`
     + viewCats.map(c=>`<button class="filter-btn ${filterCat===c?'active':''}" onclick="setFilter('${c}',this)">${c}</button>`).join('');
 
-  const filtered = filterCat==='전체' ? cycleExp : cycleExp.filter(e=>e.cat===filterCat);
+  const filtered = filterCat==='전체' ? normalExp : normalExp.filter(e=>e.cat===filterCat);
   const list = document.getElementById('expense-list');
   if (filtered.length===0) {
     list.innerHTML = `<div class="empty">${isPrev?'지난달':'이번달'} 지출 내역이 없어요.</div>`;

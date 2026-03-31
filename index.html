@@ -7,6 +7,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <style>
 :root {
   --bg: #F5F4F0;
@@ -214,7 +217,20 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
     <button class="nav-tab" onclick="showSection('crypto')">가상자산</button>
     <button class="nav-tab" onclick="showSection('savings')">저축 인사이트</button>
   </div>
-  <div class="nav-meta" id="topdate"></div>
+  <div style="display:flex;align-items:center;gap:12px;">
+    <div class="nav-meta" id="topdate"></div>
+    <div id="auth-area" style="display:flex;align-items:center;gap:8px;">
+      <button id="login-btn" onclick="signInWithGoogle()" style="font-family:var(--sans);font-size:12px;font-weight:500;padding:6px 14px;border-radius:99px;border:1px solid var(--border-strong);background:var(--surface);color:var(--text-sub);cursor:pointer;display:flex;align-items:center;gap:6px;transition:all .15s;">
+        <svg width="14" height="14" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+        구글 로그인
+      </button>
+      <div id="user-info" style="display:none;align-items:center;gap:8px;">
+        <img id="user-photo" style="width:26px;height:26px;border-radius:50%;border:1px solid var(--border);" src="" alt="">
+        <span id="user-name" style="font-size:12px;color:var(--text-sub);max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
+        <button onclick="signOutUser()" style="font-family:var(--sans);font-size:11px;padding:4px 10px;border-radius:99px;border:1px solid var(--border);background:none;color:var(--text-hint);cursor:pointer;">로그아웃</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- ══════════════════════════════════════════
@@ -351,7 +367,7 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
       <div class="card-title">지출 입력</div>
       <div class="form-row form-3" style="margin-bottom:10px;">
         <div class="field"><label>날짜</label><input type="date" id="inp-date"></div>
-        <div class="field"><label>메모</label><input type="text" id="inp-memo" placeholder="어디서 뭘…"></div>
+        <div class="field"><label>메모 <span style="font-weight:400;color:var(--text-hint);letter-spacing:0;text-transform:none;">(선택)</span></label><input type="text" id="inp-memo" placeholder="어디서 뭘… (생략 가능)"></div>
         <div class="field"><label>금액 (원)</label><input type="number" id="inp-amount" placeholder="0" min="0"></div>
       </div>
       <label style="font-size:11px;font-weight:500;color:var(--text-hint);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:7px;">카테고리</label>
@@ -524,6 +540,100 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
 <div class="toast" id="toast"></div>
 
 <script>
+// ── FIREBASE INIT ──
+const firebaseConfig = {
+  apiKey: "AIzaSyBn8TOy9h96bNqsULcilxLh5Yhir1Smfmw",
+  authDomain: "hyesumoney.firebaseapp.com",
+  projectId: "hyesumoney",
+  storageBucket: "hyesumoney.firebasestorage.app",
+  messagingSenderId: "389486954946",
+  appId: "1:389486954946:web:b7f579311393ad3bb9ae5b",
+  measurementId: "G-F0F1N1JVXX"
+};
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+
+let currentUser = null;
+let firestoreUnsubscribe = null;
+
+// ── AUTH ──
+function signInWithGoogle() {
+  const provider = new firebase.auth.GoogleAuthProvider();
+  auth.signInWithPopup(provider).catch(e => showToast('로그인 실패: ' + e.message));
+}
+
+function signOutUser() {
+  auth.signOut().then(() => showToast('로그아웃했어요.'));
+}
+
+auth.onAuthStateChanged(user => {
+  currentUser = user;
+  const loginBtn  = document.getElementById('login-btn');
+  const userInfo  = document.getElementById('user-info');
+  const userPhoto = document.getElementById('user-photo');
+  const userName  = document.getElementById('user-name');
+
+  if (user) {
+    loginBtn.style.display = 'none';
+    userInfo.style.display = 'flex';
+    userPhoto.src = user.photoURL || '';
+    userName.textContent = user.displayName || user.email;
+    startFirestoreSync();
+  } else {
+    loginBtn.style.display = 'flex';
+    userInfo.style.display = 'none';
+    if (firestoreUnsubscribe) { firestoreUnsubscribe(); firestoreUnsubscribe = null; }
+    // 로그아웃 시 로컬 상태만 사용
+    renderAll();
+  }
+});
+
+// ── FIRESTORE SYNC ──
+function startFirestoreSync() {
+  if (firestoreUnsubscribe) firestoreUnsubscribe();
+  const docRef = db.collection('users').doc(currentUser.uid).collection('data').doc('state');
+
+  // 실시간 수신: Firestore → state → 화면
+  firestoreUnsubscribe = docRef.onSnapshot(snap => {
+    if (snap.exists) {
+      const remote = snap.data();
+      state = mergeState(state, remote);
+      syncUIFromState();
+      renderAll();
+    }
+  });
+}
+
+function mergeState(base, remote) {
+  return {
+    ...base,
+    ...remote,
+    assets: { ...base.assets, ...(remote.assets || {}) },
+    coins:  remote.coins  || base.coins,
+    stables: remote.stables || base.stables,
+  };
+}
+
+function syncUIFromState() {
+  const a = state.assets;
+  const ce = document.getElementById('asset-cheongak');
+  const se = document.getElementById('asset-salary');
+  const te = document.getElementById('asset-toss');
+  if (ce) ce.value = a.cheongak;
+  if (se) se.value = a.salary;
+  if (te) te.value = a.toss;
+}
+
+// Firestore에 저장 (saveState 대체)
+function saveToFirestore() {
+  if (!currentUser) return;
+  const docRef = db.collection('users').doc(currentUser.uid).collection('data').doc('state');
+  docRef.set(JSON.parse(JSON.stringify(state))).catch(e => console.error('Firestore 저장 실패:', e));
+}
+</script>
+
+<script>
 // ── CONSTANTS ──
 const BUDGET = 1200000;
 const SALARY_DAY = 25;
@@ -627,6 +737,7 @@ function loadState() {
 
 function saveState() {
   localStorage.setItem('dashboard_state', JSON.stringify(state));
+  saveToFirestore();
 }
 
 // ── NAV ──
@@ -903,7 +1014,7 @@ function addExpense() {
   const date = document.getElementById('inp-date').value;
   const memo = document.getElementById('inp-memo').value.trim();
   const amount = parseInt(document.getElementById('inp-amount').value);
-  if (!date||!memo||!amount||amount<=0||!selectedCat) { showToast('모든 항목을 입력해주세요.'); return; }
+  if (!date||!amount||amount<=0||!selectedCat) { showToast('날짜, 금액, 카테고리를 입력해주세요.'); return; }
   state.expenses.unshift({ id: Date.now(), date, memo, amount, cat: selectedCat });
   saveState();
   renderExpense();
@@ -944,12 +1055,12 @@ function renderExpense() {
   document.getElementById('expense-input-section').style.display = 'block';
   document.getElementById('prev-cat-section').style.display = 'none';
 
-  // 날짜 기본값을 선택된 사이클 시작일로 설정
+  // 날짜 기본값: 값이 없을 때만 설정 (사용자가 입력한 날짜 유지)
   const dateInput = document.getElementById('inp-date');
-  if (isPrev) {
-    dateInput.value = start.toISOString().split('T')[0];
-  } else {
-    dateInput.value = new Date().toISOString().split('T')[0];
+  if (!dateInput.value) {
+    dateInput.value = isPrev
+      ? start.toISOString().split('T')[0]
+      : new Date().toISOString().split('T')[0];
   }
 
   // Cycle badge
@@ -1004,14 +1115,19 @@ function renderExpense() {
   // Cat summary
   const sorted = Object.entries(catTotals).sort((a,b)=>b[1]-a[1]);
   const maxAmt = sorted[0]?.[1]||1;
+  function hexFull(h) {
+    const c = h.replace('#','');
+    if (c.length===3) return '#'+c[0]+c[0]+c[1]+c[1]+c[2]+c[2];
+    return '#'+c;
+  }
   const catHtml = sorted.length===0
     ? '<div class="empty">지출 내역이 없어요.</div>'
     : sorted.map(([cat,amt])=>{
-        const color = CAT_COLORS[CATEGORIES.indexOf(cat)]||'#888';
-        const p = Math.round((amt/maxAmt)*100);
+        const color = hexFull(CAT_COLORS[CATEGORIES.indexOf(cat)]||'#888888');
+        const p = Math.max(2, Math.round((amt/maxAmt)*100));
         return `<div class="cat-sum-row">
           <div class="cat-sum-name">${cat}</div>
-          <div class="cat-sum-track"><div class="cat-sum-bar" style="width:${p}%;background:${color}30;border:1px solid ${color}50;"></div></div>
+          <div class="cat-sum-track"><div class="cat-sum-bar" style="width:${p}%;background:${color}40;border:1px solid ${color}80;"></div></div>
           <div class="cat-sum-amt">${fmtKRWFull(amt)}</div>
         </div>`;
       }).join('');
@@ -1635,9 +1751,9 @@ function init() {
   const now = new Date();
   document.getElementById('topdate').textContent =
     now.toLocaleDateString('ko-KR',{year:'numeric',month:'long',day:'numeric',weekday:'short'});
+  // localStorage 우선 로드 (Firebase 응답 전 빠른 렌더)
   loadState();
   initExpenseForm();
-  // Default to previous cycle so user can enter last month's data
   const { start: currStart } = getCycleRange();
   const prevStart = getSalaryDate(currStart.getFullYear(), currStart.getMonth() - 1);
   selectedCycleKey = prevStart.toISOString().split('T')[0];

@@ -365,9 +365,18 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
         <div id="stat-salary-pct-bar" style="flex:1;margin-left:16px;"></div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">월급 대비 남은 금액</div>
-        <div class="stat-val pos" id="stat-salary-remain">—</div>
-        <div class="stat-sub" id="stat-salary-remain-sub"></div>
+        <div class="stat-label" style="margin-bottom:10px;">월급 대비 남은 금액</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <div>
+            <div style="font-size:10px;color:var(--text-hint);margin-bottom:2px;">생활비 제외</div>
+            <div class="stat-val pos" id="stat-salary-remain-normal">—</div>
+          </div>
+          <div style="border-top:1px solid var(--border);padding-top:8px;">
+            <div style="font-size:10px;color:var(--text-hint);margin-bottom:2px;">생활비 + 특별지출 제외</div>
+            <div class="stat-val pos" id="stat-salary-remain-all">—</div>
+          </div>
+        </div>
+        <div class="stat-sub" style="margin-top:6px;" id="stat-salary-remain-sub"></div>
       </div>
     </div>
   </div>
@@ -560,6 +569,24 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
         <button class="btn-primary" style="max-width:120px;" onclick="addGoal()">추가</button>
         <button class="btn-sm" onclick="document.getElementById('add-goal-form').style.display='none'">취소</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- 지출 수정 모달 -->
+<div id="edit-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.35);z-index:900;align-items:center;justify-content:center;">
+  <div style="background:var(--surface);border-radius:var(--radius-lg);padding:28px;width:420px;max-width:90vw;box-shadow:0 20px 60px rgba(0,0,0,0.2);">
+    <div style="font-size:15px;font-weight:600;margin-bottom:20px;">지출 수정</div>
+    <div class="field" style="margin-bottom:12px;"><label>날짜</label><input type="date" id="edit-date"></div>
+    <div class="field" style="margin-bottom:12px;"><label>메모 <span style="font-weight:400;color:var(--text-hint);letter-spacing:0;text-transform:none;">(선택)</span></label><input type="text" id="edit-memo" placeholder="어디서 뭘…"></div>
+    <div class="field" style="margin-bottom:12px;"><label>금액 (원)</label><input type="number" id="edit-amount" min="0"></div>
+    <div class="field" style="margin-bottom:16px;">
+      <label>카테고리</label>
+      <div id="edit-cat-grid" style="display:grid;grid-template-columns:repeat(5,1fr);gap:5px;margin-top:6px;"></div>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn-primary" onclick="saveEditExpense()">저장</button>
+      <button class="btn-sm" onclick="closeEditModal()">취소</button>
     </div>
   </div>
 </div>
@@ -1064,6 +1091,67 @@ function deleteExpense(id) {
   showToast('삭제했어요.');
 }
 
+let editingId = null;
+let editSelectedCat = '';
+
+function openEditModal(id) {
+  const exp = state.expenses.find(e => e.id === id);
+  if (!exp) return;
+  editingId = id;
+  editSelectedCat = exp.cat;
+  document.getElementById('edit-date').value = exp.date;
+  document.getElementById('edit-memo').value = exp.memo || '';
+  document.getElementById('edit-amount').value = exp.amount;
+
+  // 카테고리 버튼 렌더링
+  const grid = document.getElementById('edit-cat-grid');
+  grid.innerHTML = '';
+  ALL_CATEGORIES.forEach(c => {
+    const btn = document.createElement('button');
+    btn.className = 'cat-btn' + (c === exp.cat ? ' active' : '');
+    btn.textContent = c;
+    btn.onclick = () => {
+      editSelectedCat = c;
+      grid.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    };
+    grid.appendChild(btn);
+  });
+
+  const modal = document.getElementById('edit-modal');
+  modal.style.display = 'flex';
+}
+
+function closeEditModal() {
+  document.getElementById('edit-modal').style.display = 'none';
+  editingId = null;
+  editSelectedCat = '';
+}
+
+function saveEditExpense() {
+  const date = document.getElementById('edit-date').value;
+  const memo = document.getElementById('edit-memo').value.trim();
+  const amount = parseInt(document.getElementById('edit-amount').value);
+  if (!date || !amount || amount <= 0 || !editSelectedCat) {
+    showToast('날짜, 금액, 카테고리를 입력해주세요.');
+    return;
+  }
+  const idx = state.expenses.findIndex(e => e.id === editingId);
+  if (idx !== -1) {
+    state.expenses[idx] = { ...state.expenses[idx], date, memo, amount, cat: editSelectedCat };
+    saveState();
+    renderExpense();
+    renderOverview();
+    showToast('수정됐어요.');
+  }
+  closeEditModal();
+}
+
+// 모달 배경 클릭 시 닫기
+document.getElementById('edit-modal').addEventListener('click', function(e) {
+  if (e.target === this) closeEditModal();
+});
+
 function renderExpense() {
   buildCycleOptions();
   const { start, end, isPrev } = getViewCycleRange();
@@ -1142,20 +1230,29 @@ function renderExpense() {
 
   // 월급 대비 지출 비율
   const cycleSalary = getCycleSalary(start);
-  const salaryPctEl = document.getElementById('stat-salary-pct');
-  const salaryRemainEl = document.getElementById('stat-salary-remain');
-  const salaryRemainSubEl = document.getElementById('stat-salary-remain-sub');
+  const salaryPctEl        = document.getElementById('stat-salary-pct');
+  const remainNormalEl     = document.getElementById('stat-salary-remain-normal');
+  const remainAllEl        = document.getElementById('stat-salary-remain-all');
+  const salaryRemainSubEl  = document.getElementById('stat-salary-remain-sub');
+
+  function setRemain(el, val) {
+    el.textContent = val >= 0 ? fmtKRWFull(val) : `${fmtKRWFull(Math.abs(val))} 초과`;
+    el.className = 'stat-val' + (val < 0 ? ' neg' : ' pos');
+  }
+
   if (cycleSalary > 0) {
-    const salaryPct = Math.round((total / cycleSalary) * 100);
-    const salaryRemain = cycleSalary - total;
+    const salaryPct      = Math.round((total / cycleSalary) * 100);
+    const remainNormal   = cycleSalary - total;
+    const remainAll      = cycleSalary - total - specialTotal;
     salaryPctEl.textContent = `${salaryPct}%`;
     salaryPctEl.className = 'stat-val' + (salaryPct >= 100 ? ' neg' : salaryPct >= 80 ? ' gold' : '');
-    salaryRemainEl.textContent = salaryRemain >= 0 ? fmtKRWFull(salaryRemain) : `${fmtKRWFull(Math.abs(salaryRemain))} 초과`;
-    salaryRemainEl.className = 'stat-val' + (salaryRemain < 0 ? ' neg' : ' pos');
+    setRemain(remainNormalEl, remainNormal);
+    setRemain(remainAllEl, remainAll);
     salaryRemainSubEl.textContent = `월급 ${fmtKRWFull(cycleSalary)} 기준`;
   } else {
     salaryPctEl.textContent = '—';
-    salaryRemainEl.textContent = '—';
+    remainNormalEl.textContent = '—';
+    remainAllEl.textContent = '—';
     salaryRemainSubEl.textContent = '월급을 먼저 입력해주세요';
     salaryRemainSubEl.style.color = 'var(--text-hint)';
   }
@@ -1229,14 +1326,16 @@ function renderExpense() {
     list.innerHTML = `<div class="empty">${isPrev?'지난달':'이번달'} 지출 내역이 없어요.</div>`;
   } else {
     list.innerHTML = filtered.map(e=>{
-      const d = new Date(e.date);
+      const [ey,em,ed] = e.date.split('-').map(Number);
+      const d = new Date(ey, em-1, ed);
       return `<div class="expense-item">
         <div class="expense-date"><span class="day">${d.getDate()}</span>${d.getMonth()+1}월</div>
         <div>
-          <div class="expense-memo">${e.memo}</div>
+          <div class="expense-memo">${e.memo||'(메모 없음)'}</div>
           <span class="expense-cat cc-${e.cat}">${e.cat}</span>
         </div>
         <div class="expense-amount">${fmtKRWFull(e.amount)}</div>
+        <button class="btn-danger-sm" onclick="openEditModal(${e.id})" style="margin-right:2px;" title="수정">✏️</button>
         <button class="btn-danger-sm" onclick="deleteExpense(${e.id})">✕</button>
       </div>`;
     }).join('');

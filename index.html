@@ -1100,9 +1100,10 @@ function renderExpense() {
       : new Date().toISOString().split('T')[0];
   }
 
-  // Cycle badge
+  // Cycle badge (끝날짜는 end 전날로 표시)
+  const endDisplay = new Date(end.getTime() - 86400000);
   document.getElementById('cycle-badge-exp').innerHTML =
-    `<span class="cycle-badge"><span class="cycle-dot"></span>${fmtDate(start)} ~ ${fmtDate(end)}</span>`;
+    `<span class="cycle-badge"><span class="cycle-dot"></span>${fmtDate(start)} ~ ${fmtDate(endDisplay)}</span>`;
 
   document.getElementById('exp-total-disp').textContent = fmtKRWFull(total);
   const bar = document.getElementById('exp-bar');

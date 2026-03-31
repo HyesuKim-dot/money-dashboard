@@ -355,6 +355,20 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:1
       <div class="stat-card"><div class="stat-label">예상 월말 지출</div><div class="stat-val" id="stat-proj">₩ 0</div></div>
       <div class="stat-card"><div class="stat-label">가장 많이 쓴 곳</div><div class="stat-val" id="stat-top-cat" style="font-size:13px;">—</div></div>
     </div>
+    <div class="grid-2" style="margin-top:8px;margin-bottom:0;">
+      <div class="stat-card" style="display:flex;align-items:center;justify-content:space-between;">
+        <div>
+          <div class="stat-label">월급 대비 지출 비율</div>
+          <div class="stat-val" id="stat-salary-pct">—</div>
+        </div>
+        <div id="stat-salary-pct-bar" style="flex:1;margin-left:16px;"></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">월급 대비 남은 금액</div>
+        <div class="stat-val pos" id="stat-salary-remain">—</div>
+        <div class="stat-sub" id="stat-salary-remain-sub"></div>
+      </div>
+    </div>
   </div>
 
   <!-- Insights -->
@@ -1037,7 +1051,11 @@ function deleteExpense(id) {
 function renderExpense() {
   buildCycleOptions();
   const { start, end, isPrev } = getViewCycleRange();
-  const cycleExp = state.expenses.filter(e => { const d=new Date(e.date); return d>=start&&d<end; });
+  const cycleExp = state.expenses.filter(e => {
+    const [y,m,d] = e.date.split('-').map(Number);
+    const dt = new Date(y, m-1, d);
+    return dt>=start&&dt<end;
+  });
   const total = cycleExp.reduce((s,e)=>s+e.amount,0);
   const pct = Math.min((total/BUDGET)*100,100);
   const remain = BUDGET - total;
@@ -1080,6 +1098,26 @@ function renderExpense() {
   document.getElementById('stat-daily').textContent = fmtKRWFull(dailyAvg);
   const projEl = document.getElementById('stat-proj');
   projEl.textContent = isPrev ? '(확정)' : fmtKRWFull(projected);
+
+  // 월급 대비 지출 비율
+  const cycleSalary = getCycleSalary(start);
+  const salaryPctEl = document.getElementById('stat-salary-pct');
+  const salaryRemainEl = document.getElementById('stat-salary-remain');
+  const salaryRemainSubEl = document.getElementById('stat-salary-remain-sub');
+  if (cycleSalary > 0) {
+    const salaryPct = Math.round((total / cycleSalary) * 100);
+    const salaryRemain = cycleSalary - total;
+    salaryPctEl.textContent = `${salaryPct}%`;
+    salaryPctEl.className = 'stat-val' + (salaryPct >= 100 ? ' neg' : salaryPct >= 80 ? ' gold' : '');
+    salaryRemainEl.textContent = salaryRemain >= 0 ? fmtKRWFull(salaryRemain) : `${fmtKRWFull(Math.abs(salaryRemain))} 초과`;
+    salaryRemainEl.className = 'stat-val' + (salaryRemain < 0 ? ' neg' : ' pos');
+    salaryRemainSubEl.textContent = `월급 ${fmtKRWFull(cycleSalary)} 기준`;
+  } else {
+    salaryPctEl.textContent = '—';
+    salaryRemainEl.textContent = '—';
+    salaryRemainSubEl.textContent = '월급을 먼저 입력해주세요';
+    salaryRemainSubEl.style.color = 'var(--text-hint)';
+  }
 
   // Top cat
   const catTotals = {};
@@ -1549,7 +1587,7 @@ const ALLOC_COLORS = ['#2C5F8A','#2A6B4A','#B8860B','#7A4A1A'];
 
 function renderSavings() {
   const { start, end } = getCycleRange();
-  const cycleExp = state.expenses.filter(e=>{ const d=new Date(e.date); return d>=start&&d<end; });
+  const cycleExp = state.expenses.filter(e=>{ const [y,m,d]=e.date.split('-').map(Number); const dt=new Date(y,m-1,d); return dt>=start&&dt<end; });
   const expTotal = cycleExp.reduce((s,e)=>s+e.amount,0);
   const income = getCycleSalary(start);
   const saved = income>0 ? income-expTotal : 0;
@@ -1619,7 +1657,7 @@ function updateSimulation(val) {
   const { start, end } = getCycleRange();
   const income = getCycleSalary(start);
   if (!income) { document.getElementById('sim-result').textContent = '이번 사이클 월급을 먼저 입력해주세요 (자산 총괄 탭).'; return; }
-  const cycleExp = state.expenses.filter(e=>{ const d=new Date(e.date); return d>=start&&d<end; });
+  const cycleExp = state.expenses.filter(e=>{ const [y,m,d]=e.date.split('-').map(Number); const dt=new Date(y,m-1,d); return dt>=start&&dt<end; });
   const expTotal = cycleExp.reduce((s,e)=>s+e.amount,0);
   const newExp = Math.max(0, expTotal - reduction);
   const newSaved = income - newExp;
@@ -1639,7 +1677,7 @@ function addSnapshot() {
   }, 0);
   const netWorth = a.salary + a.toss + investTotal + usdtKrw + a.cheongak + 30000000;
   const { start, end } = getCycleRange();
-  const cycleExp = state.expenses.filter(e=>{ const d=new Date(e.date); return d>=start&&d<end; });
+  const cycleExp = state.expenses.filter(e=>{ const [y,m,d]=e.date.split('-').map(Number); const dt=new Date(y,m-1,d); return dt>=start&&dt<end; });
   const expTotal = cycleExp.reduce((s,e)=>s+e.amount,0);
   const income = getCycleSalary(start);
   const rate = income>0 ? Math.max(0,Math.round(((income-expTotal)/income)*100)) : 0;
